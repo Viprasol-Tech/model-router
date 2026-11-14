@@ -30,14 +30,15 @@ pip install -e .
 ```python
 from model_router import ModelRouter
 
-result = ModelRouter.process("data")
-print(result)
+print(ModelRouter.select_by_task("coding"))  # claude-3-opus
 ```
 
 ### CLI
 
 ```bash
-python -m model_router "your input here"
+python -m model_router --task coding
+python -m model_router --budget 1 --context 100000
+python -m model_router --compare claude-3-haiku gpt-4-turbo
 ```
 
 ## Documentation
