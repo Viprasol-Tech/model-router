@@ -5,18 +5,18 @@ Cost vs quality comparison, latency considerations, fallback handling.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
 class ModelProfile:
     """Model performance profile."""
+
     name: str
-    speed: float  # Tokens per second (higher = faster)
-    quality: float  # Quality score 0-100
+    speed: float  # Relative throughput score (higher = faster); used as tokens/second
+    quality: float  # Relative quality score 0-100 (illustrative; set your own)
     cost_per_1m_tokens: float  # Input cost
     max_context: int  # Maximum context window
-    best_for: List[str] = None  # Task types
+    best_for: list[str] | None = None  # Task types
 
     def __post_init__(self):
         if self.best_for is None:
@@ -26,12 +26,16 @@ class ModelProfile:
     def efficiency_score(self) -> float:
         """Quality per dollar."""
         if self.cost_per_1m_tokens == 0:
-            return float('inf')
+            return float("inf")
         return self.quality / self.cost_per_1m_tokens
 
 
 class ModelRouter:
-    """Route requests to best model."""
+    """Route requests to best model.
+
+    The built-in profiles are illustrative defaults. Add or replace entries in
+    ``ModelRouter.MODELS`` with the models, prices and scores you actually use.
+    """
 
     MODELS = {
         "claude-3-opus": ModelProfile(
@@ -71,7 +75,7 @@ class ModelRouter:
             speed=40.0,
             quality=75,
             cost_per_1m_tokens=0.5,
-            max_context=4_000,
+            max_context=16_385,
             best_for=["fast", "simple"],
         ),
     }
@@ -89,10 +93,11 @@ class ModelRouter:
         return max(candidates, key=lambda m: m.quality).name
 
     @classmethod
-    def select_by_budget(cls, max_cost: float, min_quality: float = 70) -> Optional[str]:
+    def select_by_budget(cls, max_cost: float, min_quality: float = 70) -> str | None:
         """Select model within budget and quality threshold."""
         candidates = [
-            m for m in cls.MODELS.values()
+            m
+            for m in cls.MODELS.values()
             if m.cost_per_1m_tokens <= max_cost and m.quality >= min_quality
         ]
 
@@ -103,11 +108,12 @@ class ModelRouter:
         return max(candidates, key=lambda m: m.efficiency_score).name
 
     @classmethod
-    def select_by_speed(cls, max_latency_ms: float, min_quality: float = 70) -> Optional[str]:
+    def select_by_speed(cls, max_latency_ms: float, min_quality: float = 70) -> str | None:
         """Select fastest model meeting quality threshold."""
         candidates = [
-            m for m in cls.MODELS.values()
-            if (1000 / m.speed) <= max_latency_ms and m.quality >= min_quality
+            m
+            for m in cls.MODELS.values()
+            if m.speed > 0 and (1000 / m.speed) <= max_latency_ms and m.quality >= min_quality
         ]
 
         if not candidates:
@@ -116,7 +122,7 @@ class ModelRouter:
         return max(candidates, key=lambda m: m.speed).name
 
     @classmethod
-    def select_by_context(cls, required_tokens: int) -> Optional[str]:
+    def select_by_context(cls, required_tokens: int) -> str | None:
         """Select model with sufficient context."""
         candidates = [m for m in cls.MODELS.values() if m.max_context >= required_tokens]
 
@@ -127,16 +133,14 @@ class ModelRouter:
         return min(candidates, key=lambda m: m.cost_per_1m_tokens).name
 
     @classmethod
-    def compare_models(cls, model_names: List[str] = None) -> Dict:
+    def compare_models(cls, model_names: list[str] | None = None) -> dict:
         """Compare models side by side."""
         if model_names is None:
             models = cls.MODELS.values()
         else:
             models = [cls.MODELS.get(name) for name in model_names if name in cls.MODELS]
 
-        comparison = {
-            "models": {}
-        }
+        comparison = {"models": {}}
 
         for model in models:
             comparison["models"][model.name] = {
@@ -151,7 +155,13 @@ class ModelRouter:
         return comparison
 
     @classmethod
-    def recommend(cls, task: str = None, budget: float = None, speed: float = None, context: int = None) -> Dict:
+    def recommend(
+        cls,
+        task: str | None = None,
+        budget: float | None = None,
+        speed: float | None = None,
+        context: int | None = None,
+    ) -> dict:
         """Get recommendation based on criteria."""
         recommendations = []
 
@@ -180,7 +190,7 @@ class ModelRouter:
         }
 
 
-def select_model(task: str = None, budget: float = None) -> str:
+def select_model(task: str | None = None, budget: float | None = None) -> str | None:
     """Quick model selection."""
     if task:
         return ModelRouter.select_by_task(task)
@@ -190,17 +200,12 @@ def select_model(task: str = None, budget: float = None) -> str:
         return "claude-3-sonnet"
 
 
-def compare(models: List[str] = None) -> Dict:
+def compare(models: list[str] | None = None) -> dict:
     """Compare models."""
     return ModelRouter.compare_models(models)
 
 
-def process(data: str, **kwargs) -> str:
-    """Process function."""
-    return "Model router ready"
-
-
-def main():
+def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     import argparse
     import json
@@ -212,17 +217,14 @@ def main():
     parser.add_argument("--context", type=int, help="Required context tokens")
     parser.add_argument("--compare", nargs="+", help="Compare models")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.compare:
         result = ModelRouter.compare_models(args.compare)
         print(json.dumps(result, indent=2))
     else:
         rec = ModelRouter.recommend(
-            task=args.task,
-            budget=args.budget,
-            speed=args.speed,
-            context=args.context
+            task=args.task, budget=args.budget, speed=args.speed, context=args.context
         )
         print(f"Recommended: {rec['primary']}")
 
